@@ -6,11 +6,11 @@ require('dotenv').config();
 // 綠界提供的 SDK
 const ecpay_payment = require('ecpay_aio_nodejs');
 
-const { MERCHANTID, HASHKEY, HASHIV, HOST } = process.env;
+const { MERCHANTID, HASHKEY, HASHIV, HOST, CLIENTBACKURL } = process.env;
 
 // SDK 提供的範例，初始化
 const options = {
-  OperationMode: 'Test', //Test or Production
+  OperationMode: 'Test',  // 测试环境 'Test'，正式环境请改为 'Production'
   MercProfile: {
     MerchantID: MERCHANTID,
     HashKey: HASHKEY,

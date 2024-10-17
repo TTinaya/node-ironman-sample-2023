@@ -1,71 +1,95 @@
 const express = require('express');
-const bodyParser = require('body-parser');
-const ecpay_payment = require('ecpay_aio_nodejs'); // 引入綠界 SDK
+const router = express.Router();
+const crypto = require('crypto');
 require('dotenv').config();
 
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-// 使用 body-parser 解析 JSON
-app.use(bodyParser.json());
+// 綠界提供的 SDK
+const ecpay_payment = require('ecpay_aio_nodejs');
 
 const { MERCHANTID, HASHKEY, HASHIV, HOST } = process.env;
 
+// SDK 提供的範例，初始化
+// https://github.com/ECPay/ECPayAIO_Node.js/blob/master/ECPAY_Payment_node_js/conf/config-example.js
 const options = {
-  OperationMode: 'Test', // Test 或 Production
-  MercProfile: { MerchantID: MERCHANTID, HashKey: HASHKEY, HashIV: HASHIV },
-  IgnorePayment: [],
+  OperationMode: 'Test', //Test or Production
+  MercProfile: {
+    MerchantID: MERCHANTID,
+    HashKey: HASHKEY,
+    HashIV: HASHIV,
+  },
+  IgnorePayment: [
+    //    "Credit",
+    //    "WebATM",
+    //    "ATM",
+    //    "CVS",
+    //    "BARCODE",
+    //    "AndroidPay"
+  ],
   IsProjectContractor: false,
 };
+let TradeNo;
 
-// /createOrder 路由：接收 Framer 發來的訂單資料並生成 HTML 表單
-app.post('/createOrder', (req, res) => {
-  const { TotalAmount, TradeDesc, ItemName } = req.body;
-
-  if (!TotalAmount || !TradeDesc || !ItemName) {
-    return res.status(400).json({ error: '缺少必要的訂單資訊' });
-  }
-
-  const baseParams = {
-    MerchantTradeNo: `EC${Date.now()}`, // 唯一交易編號
-    MerchantTradeDate: new Date().toISOString().slice(0, 19).replace('T', ' '),
-    TotalAmount,
-    TradeDesc,
-    ItemName,
+router.get('/', (req, res) => {
+  // SDK 提供的範例，參數設定
+  // https://github.com/ECPay/ECPayAIO_Node.js/blob/master/ECPAY_Payment_node_js/conf/config-example.js
+  const MerchantTradeDate = new Date().toLocaleString('zh-TW', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+    timeZone: 'UTC',
+  });
+  TradeNo = 'test' + new Date().getTime();
+  let base_param = {
+    MerchantTradeNo: TradeNo, //請帶20碼uid, ex: f0a0d7e9fae1bb72bc93
+    MerchantTradeDate,
+    TotalAmount: '100',
+    TradeDesc: '測試交易描述',
+    ItemName: '測試商品等',
     ReturnURL: `${HOST}/return`,
     ClientBackURL: `${HOST}/clientReturn`,
   };
+  const create = new ecpay_payment(options);
 
-  try {
-    const payment = new ecpay_payment(options);
-    const html = payment.aio_check_out_all(baseParams);
+  // 注意：在此事直接提供 html + js 直接觸發的範例，直接從前端觸發付款行為
+  const html = create.payment_client.aio_check_out_all(base_param);
+  console.log(html);
 
-    // 回傳 HTML 表單給前端，前端會自動提交此表單
-    res.send(`
-      <html>
-        <body onload="document.forms[0].submit()">
-          ${html}
-        </body>
-      </html>
-    `);
-  } catch (error) {
-    console.error('生成訂單錯誤:', error);
-    res.status(500).json({ error: '生成訂單失敗' });
-  }
+  res.render('index', {
+    title: 'Express',
+    html,
+  });
 });
 
-// 綠界回傳結果處理
-app.post('/return', (req, res) => {
-  console.log('綠界回傳資料:', req.body);
+// 後端接收綠界回傳的資料
+router.post('/return', async (req, res) => {
+  console.log('req.body:', req.body);
+
+  const { CheckMacValue } = req.body;
+  const data = { ...req.body };
+  delete data.CheckMacValue; // 此段不驗證
+
+  const create = new ecpay_payment(options);
+  const checkValue = create.payment_client.helper.gen_chk_mac_value(data);
+
+  console.log(
+    '確認交易正確性：',
+    CheckMacValue === checkValue,
+    CheckMacValue,
+    checkValue,
+  );
+
+  // 交易成功後，需要回傳 1|OK 給綠界
   res.send('1|OK');
 });
 
-// 用戶完成交易後的跳轉頁面
-app.get('/clientReturn', (req, res) => {
-  res.send('交易完成，感謝您的購買！');
+// 用戶交易完成後的轉址
+router.get('/clientReturn', (req, res) => {
+  console.log('clientReturn:', req.body, req.query);
+  res.render('return', { query: req.query });
 });
 
-// 啟動伺服器
-app.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
-});
+module.exports = router;

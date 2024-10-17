@@ -3,93 +3,97 @@ const router = express.Router();
 const crypto = require('crypto');
 require('dotenv').config();
 
-// 綠界提供的 SDK
+// 引入绿界提供的 SDK
 const ecpay_payment = require('ecpay_aio_nodejs');
 
+// 从环境变量中获取 ECPay 的商户信息和主机地址
 const { MERCHANTID, HASHKEY, HASHIV, HOST } = process.env;
 
-// SDK 提供的範例，初始化
-// https://github.com/ECPay/ECPayAIO_Node.js/blob/master/ECPAY_Payment_node_js/conf/config-example.js
+// SDK 初始化配置
 const options = {
-  OperationMode: 'Test', //Test or Production
+  OperationMode: 'Test', // 测试环境 'Test'，正式环境请改为 'Production'
   MercProfile: {
     MerchantID: MERCHANTID,
     HashKey: HASHKEY,
     HashIV: HASHIV,
   },
-  IgnorePayment: [
-    //    "Credit",
-    //    "WebATM",
-    //    "ATM",
-    //    "CVS",
-    //    "BARCODE",
-    //    "AndroidPay"
-  ],
+  IgnorePayment: [],
   IsProjectContractor: false,
 };
-let TradeNo;
 
-router.get('/', (req, res) => {
-  // SDK 提供的範例，參數設定
-  // https://github.com/ECPay/ECPayAIO_Node.js/blob/master/ECPAY_Payment_node_js/conf/config-example.js
+router.post('/createOrder', (req, res) => {
+  const { totalAmount, tradeDesc, itemName, returnURL, clientBackURL } = req.body;
+
+  // 检查必填参数
+  if (!totalAmount || !tradeDesc || !itemName) {
+    return res.status(400).json({ error: '缺少必要的参数' });
+  }
+
+  // 生成唯一的 MerchantTradeNo，长度需小于等于 20 字符
+  const MerchantTradeNo = 'ORD' + Date.now();
+
+  // 生成 MerchantTradeDate，格式为 yyyy/MM/dd HH:mm:ss
   const MerchantTradeDate = new Date().toLocaleString('zh-TW', {
+    timeZone: 'Asia/Taipei',
+    hour12: false,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
-    hour12: false,
-    timeZone: 'UTC',
-  });
-  TradeNo = 'test' + new Date().getTime();
+  }).replace(/\//g, '/');
+
   let base_param = {
-    MerchantTradeNo: TradeNo, //請帶20碼uid, ex: f0a0d7e9fae1bb72bc93
+    MerchantTradeNo,
     MerchantTradeDate,
-    TotalAmount: '100',
-    TradeDesc: '測試交易描述',
-    ItemName: '測試商品等',
-    ReturnURL: `${HOST}/return`,
-    ClientBackURL: `${HOST}/clientReturn`,
+    TotalAmount: String(totalAmount),
+    TradeDesc: tradeDesc,
+    ItemName: itemName,
+    ReturnURL: returnURL || `${HOST}/return`,
+    ClientBackURL: clientBackURL || `${HOST}/clientReturn`,
+    // 可根据需要添加其他参数
   };
+
   const create = new ecpay_payment(options);
 
-  // 注意：在此事直接提供 html + js 直接觸發的範例，直接從前端觸發付款行為
+  // 生成付款用的 HTML 表单
   const html = create.payment_client.aio_check_out_all(base_param);
-  console.log(html);
 
-  res.render('index', {
-    title: 'Express',
-    html,
-  });
+  // 返回 HTML 表单给前端
+  res.json({ html });
 });
 
-// 後端接收綠界回傳的資料
+// 接收 ECPay 回传的交易结果
 router.post('/return', async (req, res) => {
-  console.log('req.body:', req.body);
+  console.log('收到 ECPay 回传的数据:', req.body);
 
   const { CheckMacValue } = req.body;
   const data = { ...req.body };
-  delete data.CheckMacValue; // 此段不驗證
+  delete data.CheckMacValue; // 验证时需移除 CheckMacValue
 
   const create = new ecpay_payment(options);
   const checkValue = create.payment_client.helper.gen_chk_mac_value(data);
 
   console.log(
-    '確認交易正確性：',
+    '验证交易正确性：',
     CheckMacValue === checkValue,
+    'ECPay 回传的 CheckMacValue：',
     CheckMacValue,
+    '计算得到的 CheckMacValue：',
     checkValue,
   );
 
-  // 交易成功後，需要回傳 1|OK 給綠界
+  // 根据交易结果进行业务处理，例如更新订单状态等
+
+  // 交易成功后，需要回传 1|OK 给 ECPay
   res.send('1|OK');
 });
 
-// 用戶交易完成後的轉址
+// 用户交易完成后的跳转页面
 router.get('/clientReturn', (req, res) => {
-  console.log('clientReturn:', req.body, req.query);
-  res.render('return', { query: req.query });
+  console.log('用户完成交易返回:', req.query);
+  res.send('交易已完成，谢谢您的购买！');
 });
 
 module.exports = router;

@@ -49,7 +49,7 @@ router.get('/', (req, res) => {
     TradeDesc: tradeDesc,
     ItemName: itemName,
     ReturnURL: `${HOST}/return`,
-    ClientBackURL: CLIENTBACKURL || `${HOST}/clientReturn`,
+    ClientBackURL: CLIENTBACKURL,
   };
   const create = new ecpay_payment(options);
 

@@ -23,9 +23,22 @@ let TradeNo;
 
 router.get('/', (req, res) => {
   // 从查询参数中获取订单数据，如果未提供则使用默认值
-  const totalAmount = req.query.totalAmount || '100';
-  const tradeDesc = req.query.tradeDesc || '測試交易描述';
-  const itemName = req.query.itemName || '測試商品等';
+  let totalAmount = parseInt(req.query.totalAmount, 10) || 100;
+  let tradeDesc = req.query.tradeDesc || '測試交易描述';
+  let itemName = req.query.itemName || '測試商品等';
+
+  // 确保 totalAmount 为大于 0 的整数
+  if (isNaN(totalAmount) || totalAmount <= 0) {
+    totalAmount = 100; // 使用默认值
+  }
+  totalAmount = totalAmount.toString();
+
+  // 确保 itemName 长度不超过 400 个字符
+  if (itemName.length > 400) {
+    itemName = itemName.substring(0, 400);
+  }
+  // 对 itemName 进行编码
+  itemName = encodeURIComponent(itemName);
 
   // 生成 MerchantTradeDate，格式为 yyyy/MM/dd HH:mm:ss
   const MerchantTradeDate = new Date().toLocaleString('zh-TW', {
@@ -40,10 +53,10 @@ router.get('/', (req, res) => {
   }).replace(/\//g, '/');
 
   // 生成唯一的 MerchantTradeNo，长度不超过 20 个字符
-  TradeNo = 'test' + Date.now();
+  TradeNo = 'test' + Date.now().toString().slice(-10);
 
   let base_param = {
-    MerchantTradeNo: TradeNo, //請帶20碼uid, ex: f0a0d7e9fae1bb72bc93
+    MerchantTradeNo: TradeNo, // 請帶 20 碼 uid
     MerchantTradeDate,
     TotalAmount: totalAmount,
     TradeDesc: tradeDesc,
@@ -51,6 +64,7 @@ router.get('/', (req, res) => {
     ReturnURL: `${HOST}/return`,
     ClientBackURL: CLIENTBACKURL,
   };
+
   const create = new ecpay_payment(options);
 
   // 生成付款用的 HTML 表单
